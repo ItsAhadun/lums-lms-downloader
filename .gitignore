@@ -5,3 +5,6 @@ lums-lms-downloader-*.zip
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# Local working notes, not part of the distributed extension.
+CLAUDE.md
