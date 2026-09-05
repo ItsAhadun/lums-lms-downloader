@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<!--
+  Never displayed. Exists because a service worker has no URL.createObjectURL,
+  and chrome.downloads needs a URL to hand the finished archive to.
+-->
+<html lang="en">
+<head><meta charset="utf-8"><title>LUMS archive builder</title></head>
+<body>
+  <script src="lib/paths.js"></script>
+  <script src="lib/zip.js"></script>
+  <script src="offscreen.js"></script>
+</body>
+</html>

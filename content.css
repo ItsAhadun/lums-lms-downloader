@@ -1,0 +1,26 @@
+/*
+ * Styles for the injected toolbar button only.
+ *
+ * This is the one piece of UI that lives OUTSIDE the shadow root, because it
+ * has to inherit Sakai's Bootstrap styling to look native in .navIntraTool.
+ * Everything else is styled inside the shadow root in content.js.
+ */
+
+.lums-dl-item {
+  display: inline-block;
+}
+
+.lums-dl-btn {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Sakai renders .navIntraTool links unstyled until hovered; nudge ours just
+   enough to read as an action without overriding the skin. */
+.navIntraTool .lums-dl-btn {
+  font-weight: 600;
+}
+
+#lums-dl-host {
+  all: initial;
+}

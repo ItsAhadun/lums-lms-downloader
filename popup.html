@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <span class="brand">LUMS Downloader</span>
+    <button id="openFolder" class="link" title="Open the downloads folder">Downloads</button>
+  </header>
+
+  <section id="jobs" class="jobs"></section>
+
+  <section class="courses">
+    <h2>Download a course</h2>
+    <div id="sites" class="sites"><div class="muted">Loading courses…</div></div>
+    <button id="queue" class="btn primary" disabled>Download selected</button>
+    <p class="hint">Courses from the live LMS and the archive are listed together. A course arrives as one ZIP with its folders intact, so the browser asks you to save once instead of once per file. Downloads keep running with every LMS tab closed, and archives are built one at a time.</p>
+  </section>
+
+  <details class="settings">
+    <summary>Settings</summary>
+    <label class="field">
+      <span>Root folder</span>
+      <input id="rootPrefix" type="text" spellcheck="false">
+    </label>
+    <label class="field">
+      <span>Concurrent downloads</span>
+      <input id="concurrency" type="number" min="1" max="5" step="1">
+    </label>
+    <label class="check">
+      <input id="includeHidden" type="checkbox">
+      <span>Include hidden / unavailable items</span>
+    </label>
+    <label class="check">
+      <input id="webLinks" type="checkbox">
+      <span>Save URL shortcuts as .url files</span>
+    </label>
+    <p class="hint">The archive lands inside the root folder. A selection of a single file is saved as that file rather than a one-item ZIP.</p>
+  </details>
+
+  <script src="lib/paths.js"></script>
+  <script src="lib/progress.js"></script>
+  <script src="lib/sakai.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

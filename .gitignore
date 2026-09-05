@@ -1,0 +1,7 @@
+# Build output of build.sh - shipped as a GitHub Release asset, not committed.
+lums-lms-downloader-*.zip
+
+# OS noise
+Thumbs.db
+desktop.ini
+.DS_Store
