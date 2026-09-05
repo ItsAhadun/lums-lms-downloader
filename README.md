@@ -30,19 +30,29 @@ Archives are built one at a time. Queue three courses and they run in order.
 
 ---
 
-## Install (unpacked)
+## Install
 
-The extension is not on the Web Store, so it installs unpacked. It needs **Chrome or Brave
-116 or newer**.
+Not on the Chrome Web Store, so it installs unpacked. Needs **Chrome or Brave 116 or
+newer**. Takes about a minute.
 
-1. Open `chrome://extensions` (or `brave://extensions`).
-2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and select this folder.
+1. Download the zip from the
+   [latest release](https://github.com/ItsAhadun/lums-lms-downloader/releases/latest).
+2. Unzip it into a folder you will keep. **The folder is the installed extension** — if you
+   later move or delete it, the extension disappears from Chrome. Somewhere like
+   `Documents\lums-downloader` is fine; inside Downloads is not.
+3. Open `chrome://extensions` (or `brave://extensions`).
+4. Turn on **Developer mode**, top right.
+5. Click **Load unpacked** and pick the unzipped folder — the one with `manifest.json`
+   directly inside it.
 
-The LUMS Downloader icon appears in your toolbar.
+The LUMS Downloader icon appears in your toolbar. Pin it if Chrome hides it behind the
+puzzle-piece menu.
 
-> **Brave note:** Brave does not auto-update unpacked extensions. To upgrade, replace the
-> folder contents and click the reload arrow on the extension card.
+### Updating
+
+Unpacked extensions do not auto-update, in either browser. To upgrade: download the newer
+zip, replace the contents of the same folder, then click the reload arrow on the
+extension's card in `chrome://extensions`. Your settings are kept.
 
 ---
 
