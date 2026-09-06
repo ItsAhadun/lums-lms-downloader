@@ -144,6 +144,12 @@
     const rows = [];
     for (const h of ok) for (const s of h.res.sites) rows.push({ origin: h.origin, id: s.id, title: s.title });
 
+    // Newest semester first. A LUMS course title opens with its semester code
+    // ("2401 SSE Calculus I"), so descending title order is descending
+    // semester, and the term someone is actually taking sits at the top of a
+    // list that has to scroll. Numeric collation so 2410 sorts above 249.
+    rows.sort((a, b) => b.title.localeCompare(a.title, undefined, { numeric: true }));
+
     if (!rows.length) {
       $('sites').innerHTML = '<div class="muted">No courses found.</div>';
       return;
