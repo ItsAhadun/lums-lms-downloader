@@ -197,13 +197,15 @@
     $('concurrency').value = settings.concurrency || 3;
     $('includeHidden').checked = !!settings.includeHidden;
     $('webLinks').checked = settings.webLinks === 'save';
+    $('openResources').checked = settings.openResources !== false;
 
     const save = async () => {
       const next = {
         rootPrefix: $('rootPrefix').value,
         concurrency: Number($('concurrency').value),
         includeHidden: $('includeHidden').checked,
-        webLinks: $('webLinks').checked ? 'save' : 'skip'
+        webLinks: $('webLinks').checked ? 'save' : 'skip',
+        openResources: $('openResources').checked
       };
       const r = await send({ type: 'SET_SETTINGS', settings: next });
       if (r.settings) {
@@ -211,7 +213,7 @@
         $('concurrency').value = settings.concurrency;   // reflect clamping
       }
     };
-    ['rootPrefix', 'concurrency', 'includeHidden', 'webLinks'].forEach((id) => {
+    ['rootPrefix', 'concurrency', 'includeHidden', 'webLinks', 'openResources'].forEach((id) => {
       $(id).addEventListener('change', save);
     });
   }

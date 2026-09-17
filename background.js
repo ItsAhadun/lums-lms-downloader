@@ -51,7 +51,8 @@ const DEFAULTS = {
   rootPrefix: 'LUMS LMS/',
   concurrency: 3,
   includeHidden: false,
-  webLinks: 'skip'
+  webLinks: 'skip',
+  openResources: true
 };
 
 /* ---------- state ---------- */

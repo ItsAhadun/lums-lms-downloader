@@ -156,6 +156,7 @@ Open the extension popup and expand **Settings**.
 | Concurrent downloads | 3 | 1 to 5. Higher risks throttling from Sakai. |
 | Include hidden / unavailable items | off | Items the instructor hid or scheduled. |
 | Save URL shortcuts as `.url` files | off | Sakai "web link" items. Skipped by default. |
+| Open Resources when clicking a course in the sidebar | on | A course link in the sidebar opens that course's Resources tool in place of Overview. A course with no Resources tool opens as before. |
 
 ---
 
