@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "LUMS LMS Resource Downloader",
-  "version": "1.2.1",
-  "description": "Bulk-download Sakai Resources from the LUMS LMS and its archive with folder structure and progress.",
+  "version": "1.3.0",
+  "description": "Bulk-download Sakai Resources from the LUMS LMS and its archive, or sync a course into a folder you already keep it in.",
   "minimum_chrome_version": "116",
   "permissions": ["downloads", "storage", "alarms", "offscreen"],
   "host_permissions": ["https://lms.lums.edu.pk/*", "https://lmsarchive-2026.lums.edu.pk/*"],
@@ -11,7 +11,7 @@
   "content_scripts": [
     {
       "matches": ["https://lms.lums.edu.pk/portal/*", "https://lmsarchive-2026.lums.edu.pk/portal/*"],
-      "js": ["lib/paths.js", "lib/progress.js", "lib/sakai.js", "content.js"],
+      "js": ["lib/paths.js", "lib/progress.js", "lib/sakai.js", "lib/sync.js", "lib/folder.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }

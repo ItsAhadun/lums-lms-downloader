@@ -1,7 +1,8 @@
 # LUMS LMS Resource Downloader
 
 Take a whole course's Resources off LUMS Sakai in one go, folder structure intact, with
-per-file and overall progress.
+per-file and overall progress. Already keep a course in a folder of your own? Sync it and
+collect only the files that folder is missing.
 
 Two LMS hosts work:
 
@@ -59,7 +60,8 @@ contents of the same folder, then click the reload arrow on the extension's card
 **From a course:**
 
 1. Open a course, then its **Resources** tool.
-2. Click **⤓ Download all** in the tool's action bar.
+2. Click **⤓ Download all** in the tool's action bar. **⇅ Sync folder** sits beside it and
+   fetches only what a folder of yours is missing; see [Sync a folder](#sync-a-folder).
 3. Pick what you want in the pre-flight dialog: by folder, by file type, or file by file.
 4. Click **Download**. A progress card appears in the bottom-right corner.
 
@@ -89,6 +91,58 @@ at once, or change settings. The list merges both hosts. Sign in to one host and
 names the other under the course list, so you can see what you are missing. Courses queued
 here arrive as one ZIP each, same as the in-page button. The toolbar badge shows overall
 percentage while a job runs.
+
+---
+
+## Sync a folder
+
+Once a course lives in a folder on your machine, what you want next week is the three files
+the instructor posted since, and nothing else.
+
+Click **⇅ Sync folder** in the Resources tool, next to Download all. The sync page opens on
+that course, so the only thing left to choose is the folder:
+
+1. Pick the folder you keep it in. Chrome asks you to allow the extension to edit it.
+2. The comparison runs on its own. You get a count of what the LMS has, what the folder
+   already has, and a list of what is missing.
+3. Click **Download missing files**. Each one lands in the folder, inside its LMS
+   subfolder, which the extension creates when it has to.
+
+The folder sticks to the course. Sync the same course again and it reconnects, compares and
+shows you the answer, so the whole thing costs one click from the Resources page and one
+more to fetch. A clean run re-checks the folder and settles on "everything is here".
+
+**Sync folder** in the toolbar popup does the same job when no course page is open. It adds
+one step, picking the course from the list.
+
+The comparison runs one way. A file counts as already there when a file of that name turns
+up anywhere under the folder you picked, at any depth. Your own notes, scratch folders and
+past-semester material stay invisible to it, and a lecture you moved into a folder of your
+own does not come back as a second copy. A file you renamed does come back, under its LMS
+name.
+
+The extension remembers which folder goes with which course. Chrome drops write access to a
+folder when it restarts, so the first sync after a restart asks you to confirm the folder
+with one click.
+
+When it writes into your folder, each run makes one attempt per file. Compare again to
+collect whatever failed. The ZIP route below uses the extension's usual three attempts.
+
+Sync writes into a folder you chose, so `chrome.downloads` and the root-folder setting play
+no part. The concurrency, hidden-items and web-link settings all apply.
+
+### Brave takes one extra step
+
+Brave turns off the File System Access API, so the page cannot write into your folder.
+Comparing still works. Pick the folder and the missing files arrive as one ZIP called
+`<Course Title> - missing files.zip`, which you extract over the folder to merge them.
+
+To get files written into the folder on Brave, open `brave://flags`, search for **File
+System**, enable that flag and restart Brave. Chrome and Edge need nothing.
+
+Brave asks whether to "upload" the folder when you pick it. Nothing leaves your machine.
+The page reads the list of filenames to work out what is missing, and it never opens the
+files.
 
 ---
 
@@ -191,7 +245,9 @@ read. Edit the manifest alone and you get a button on a host the popup never ask
 |---|---|
 | `background.js` | Service worker: job state, download queue, retries, badge |
 | `offscreen.js` | Fetches and zips a course; owns the ZipWriter |
-| `content.js` | Resources-page button, pre-flight picker, progress panel |
+| `content.js` | Resources-page buttons, pre-flight picker, progress panel |
+| `sync.*` | The Sync folder page: folder picker, comparison, writing missing files |
+| `lib/sync.js` | Deciding which of a course's files a folder already holds |
 | `lib/sakai.js` | Sakai Entity Broker client, the LMS host list, response normalising |
 | `lib/zip.js` | STORE-method ZIP writer (no dependencies) |
 | `lib/paths.js` | Filename sanitising and path construction |
@@ -199,8 +255,8 @@ read. Edit the manifest alone and you get a button on a host the popup never ask
 | `popup.*` | Cross-course progress, course picker, settings |
 
 `lib/*.js` carry no `import`/`export` on purpose. That keeps each file valid as a classic
-script (content script, popup, offscreen document) and as an ES module (service worker,
-`node --test`), so four contexts share one copy without a bundler.
+script (content script, popup, sync page, offscreen document) and as an ES module (service
+worker, `node --test`), so five contexts share one copy without a bundler.
 
 ### The offscreen document
 

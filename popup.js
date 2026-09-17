@@ -28,20 +28,8 @@
     });
   });
 
-  /* Try every open tab on THAT host before falling back to a popup-context
-   * fetch. Only a tab on the same origin can answer for it: a live-LMS tab
-   * would happily return the live course list for an archive request. */
-  async function relay(origin, msg, fallback) {
-    let tabs = [];
-    try { tabs = await chrome.tabs.query({ url: origin + '/portal/*' }); } catch (e) { /* none */ }
-    for (const t of tabs) {
-      try {
-        const r = await chrome.tabs.sendMessage(t.id, Object.assign({ origin }, msg));
-        if (r) return r;
-      } catch (e) { /* no content script in that tab */ }
-    }
-    return fallback();
-  }
+  // Prefer an open tab on that host over a popup-context fetch; see Sakai.relay.
+  const relay = Sakai.relay;
 
   /* ---------- jobs ---------- */
 
@@ -229,6 +217,14 @@
   }
 
   $('openFolder').onclick = () => send({ type: 'SHOW_DOWNLOADS' });
+
+  /* Its own tab, not part of this popup: picking a folder opens a native
+   * dialog, and a popup closes the moment focus leaves it - taking the promise
+   * waiting on the picker with it. */
+  $('syncFolder').onclick = () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('sync.html') });
+    window.close();
+  };
 
   initSettings().then(loadSites);
   tick();

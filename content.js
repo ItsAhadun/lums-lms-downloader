@@ -25,6 +25,7 @@
 
   const Sakai = globalThis.LUMS.sakai;
   const Progress = globalThis.LUMS.progress;
+  const P = globalThis.LUMS.paths;
 
   // ZIP32 has no 64-bit offsets, so an archive cannot pass 4 GB. Checked here
   // rather than 3 GB into the download, where the only options left are bad.
@@ -93,19 +94,28 @@
   /* ---------- toolbar button ---------- */
 
   const nav = document.querySelector('.navIntraTool');
-  const li = document.createElement('li');
-  li.className = 'lums-dl-item';
-  const btn = document.createElement('a');
-  btn.href = '#';
-  btn.className = 'lums-dl-btn';
-  btn.textContent = '⤓ Download all';
-  li.appendChild(btn);
-  if (nav) nav.appendChild(li); else document.body.appendChild(li);
 
-  btn.addEventListener('click', (e) => {
-    e.preventDefault();
-    openPreflight();
-  });
+  function toolbarButton(text, title, onClick) {
+    const li = document.createElement('li');
+    li.className = 'lums-dl-item';
+    const a = document.createElement('a');
+    a.href = '#';
+    a.className = 'lums-dl-btn';
+    a.textContent = text;
+    a.title = title;
+    a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
+    li.appendChild(a);
+    if (nav) nav.appendChild(li); else document.body.appendChild(li);
+  }
+
+  toolbarButton('⤓ Download all', 'Download this course’s Resources', openPreflight);
+
+  /* Everything sync does happens in this page's own modal; see below. */
+  toolbarButton(
+    '⇅ Sync folder',
+    'Fetch only the files missing from a folder you keep this course in',
+    openSync
+  );
 
   /* ---------- pre-flight picker ---------- */
 
@@ -407,6 +417,284 @@
 
   // A job may already be running for this course (page reloaded mid-download).
   tick();
+
+  /* ---------- sync a folder ---------- */
+
+  /* Syncing happens here rather than in a tab of its own. This page already
+   * knows which course it is and already has a modal; opening a second tab to
+   * answer "what am I missing" was the slowest part of asking.
+   *
+   * The folder is remembered against this course, so the first sync explains
+   * itself and asks for a folder, and every one after it goes straight to the
+   * answer. The handle lives in this origin's IndexedDB, which is the LMS
+   * host's: a handle cannot travel through chrome.runtime messaging, so the
+   * extension's own sync page keeps a separate one.
+   */
+  const F = globalThis.LUMS.folder;
+  const SyncPlan = globalThis.LUMS.sync;
+
+  let syncDir = null;      // granted directory handle, on browsers that have one
+  let syncLocal = null;    // folder listing from an <input>, on browsers that do not
+  let syncLabel = '';
+  let syncMissing = [];
+  let syncStop = false;
+
+  const haveSyncFolder = () => !!(syncDir || syncLocal);
+
+  async function ensureCourseTitle() {
+    if (courseTitle) return;
+    const t = await Sakai.fetchSiteTitle(siteId, location.origin);
+    if (t && t.title) courseTitle = t.title;
+  }
+
+  /* One card shape for every step, so the dialog does not jump around as it
+   * moves from explaining to comparing to listing what it found. */
+  function syncCard(body, foot, closable) {
+    $modal.innerHTML =
+      '<div class="overlay"><div class="card">' +
+        '<div class="head">' +
+          '<div><div class="title">Sync folder</div>' +
+          '<div class="sub">' + esc(courseTitle || 'this course') + '</div></div>' +
+          (closable ? '<button class="x" data-act="close" title="Close">×</button>' : '') +
+        '</div>' + body +
+        '<div class="row end">' + foot + '</div>' +
+      '</div></div>';
+
+    const on = (act, fn) => {
+      const el = $modal.querySelector('[data-act="' + act + '"]');
+      if (el) el.onclick = fn;
+      return el;
+    };
+    on('close', closeModal);
+    on('pick', choosePick);
+    on('change', () => showExplainer(null));
+    on('compare', runCompare);
+    on('download', runSyncDownload);
+    on('stop', () => { syncStop = true; });
+
+    const input = $modal.querySelector('[data-act="pickinput"]');
+    if (input) input.onchange = (e) => takeSyncListing(e.target.files);
+  }
+
+  // A directory <input> is the only folder picker left when the File System
+  // Access API is off, so the control differs even though the step does not.
+  function pickerButton(label) {
+    return F.supported()
+      ? '<button class="btn primary" data-act="pick">' + esc(label) + '</button>'
+      : '<label class="btn primary">' + esc(label) +
+        '<input type="file" data-act="pickinput" webkitdirectory directory multiple hidden></label>';
+  }
+
+  function showExplainer(note) {
+    const body = F.supported()
+      ? '<div class="note">Point this at the folder where you keep this course. Every file ' +
+        'the LMS has and that folder does not comes down into it. Files already there stay ' +
+        'untouched, and anything of your own the LMS never had is ignored.' +
+        '<br><br>The folder is remembered, so every sync after this one goes straight to the ' +
+        'answer.</div>'
+      : '<div class="note"><b>Brave turns off the File System Access API</b>, so this cannot ' +
+        'write into your folder or remember which one it is. Picking it still works out what ' +
+        'is missing, and those files arrive as one ZIP to extract over the folder.' +
+        '<br><br>To have them written straight in, enable the <b>File System</b> flag in ' +
+        'brave://flags and restart. Either way the folder never leaves your machine: only ' +
+        'its list of filenames is read.</div>';
+
+    syncCard(
+      body + (note ? '<div class="note bad">' + esc(note) + '</div>' : ''),
+      '<button class="btn" data-act="close">Cancel</button>' + pickerButton('Choose folder'),
+      true
+    );
+  }
+
+  async function choosePick() {
+    let handle;
+    try {
+      handle = await F.pick();
+    } catch (e) {
+      if (e && e.aborted) return;   // changed their mind; nothing to say
+      return showExplainer('This browser would not open a folder: ' + e.message);
+    }
+    if (!(await F.grant(handle))) {
+      return showExplainer('Without write access to that folder there is nowhere to put the missing files.');
+    }
+    syncDir = handle;
+    syncLocal = null;
+    syncLabel = handle.name;
+    await F.remember(location.origin, siteId, handle);
+    runCompare();
+  }
+
+  function takeSyncListing(fileList) {
+    if (!fileList || !fileList.length) return;
+    syncLocal = F.listing(fileList);
+    syncDir = null;
+    syncLabel = F.listingRoot(fileList) || 'that folder';
+    runCompare();
+  }
+
+  async function openSync() {
+    syncStop = false;
+    showModalText('Opening…', true);
+    await ensureCourseTitle();
+
+    if (!F.supported()) return showExplainer(null);
+
+    const handle = await F.recall(location.origin, siteId);
+    if (!handle) return showExplainer(null);
+
+    if (await F.permissionState(handle) === 'granted') {
+      syncDir = handle;
+      syncLabel = handle.name;
+      return runCompare();
+    }
+
+    // Remembered, but the browser dropped write access when it restarted. One
+    // click gets it back, which beats hunting for the folder again.
+    syncCard(
+      '<div class="note">Last time you synced this course to <b>' + esc(handle.name) + '</b>. ' +
+      'Chrome drops write access to a folder when it restarts, so it needs confirming again.</div>',
+      '<button class="btn" data-act="change">Choose a different folder</button>' +
+      '<button class="btn primary" data-act="reconnect">Use ' + esc(handle.name) + '</button>',
+      true
+    );
+    const btn = $modal.querySelector('[data-act="reconnect"]');
+    if (btn) {
+      btn.onclick = async () => {
+        if (!(await F.grant(handle))) return showExplainer('Write access to that folder was refused.');
+        syncDir = handle;
+        syncLabel = handle.name;
+        runCompare();
+      };
+    }
+  }
+
+  async function runCompare() {
+    if (!haveSyncFolder()) return showExplainer(null);
+    showModalText('Comparing this course against ' + (syncLabel || 'your folder') + '…', true);
+
+    const content = await loadContent();   // reports its own problems
+    if (!content) return;
+
+    let local;
+    try {
+      local = syncLocal || await F.scan(syncDir);
+    } catch (e) {
+      return showExplainer('Could not read that folder: ' + String((e && e.message) || e));
+    }
+
+    const plan = SyncPlan.plan(content.items, SyncPlan.indexLocal(local));
+    syncMissing = plan.missing;
+    renderSyncResult(content.items.length, plan.present.length, local.length);
+  }
+
+  function renderSyncResult(onLms, present, scanned) {
+    let bytes = 0;
+    for (const it of syncMissing) bytes += it.bytes;
+
+    const counts = '<div class="note"><b>' + onLms + '</b> on the LMS · <b>' + present +
+      '</b> already in ' + esc(syncLabel) + ' · <b>' + syncMissing.length + '</b> missing</div>';
+
+    const list = syncMissing.length
+      ? '<div class="tree">' + syncMissing.map((it, i) =>
+          '<div class="irow" data-i="' + i + '"><span class="iname">' + esc(it.rel) + '</span>' +
+          '<span class="isize">' + esc(Progress.formatBytes(it.bytes)) + '</span></div>').join('') + '</div>'
+      : '<div class="note ok">Nothing to do. That folder already has every file the LMS is showing.</div>';
+
+    const download = syncMissing.length
+      ? '<button class="btn primary" data-act="download">Download ' + syncMissing.length +
+        ' missing file' + (syncMissing.length === 1 ? '' : 's') +
+        (F.supported() ? '' : ' as a ZIP') + (bytes ? ' · ' + esc(Progress.formatBytes(bytes)) : '') +
+        '</button>'
+      : '';
+
+    syncCard(
+      counts + list +
+      '<div class="note">' + scanned + ' file(s) scanned. A file counts as already there when ' +
+      'its name turns up anywhere inside the folder, at any depth, so anything you moved or ' +
+      'filed away yourself is left alone.</div>',
+      '<button class="btn" data-act="change">Change folder</button>' +
+      '<button class="btn" data-act="compare">Check again</button>' + download,
+      true
+    );
+  }
+
+  function markSyncRow(i, state, why) {
+    const el = $modal.querySelector('.irow[data-i="' + i + '"]');
+    if (!el) return;
+    const tag = el.querySelector('.isize');
+    if (tag) tag.textContent = why || state;
+    el.style.opacity = state === 'done' ? '.55' : '1';
+  }
+
+  /* Without a directory handle there is nowhere to write, so the missing items
+   * go through the ordinary download queue instead and arrive as one archive.
+   * deliver() already owns the size check, the job and the progress panel. */
+  async function runSyncDownload() {
+    if (!F.supported() || !syncDir) return deliver(syncMissing, 'missing files');
+
+    syncStop = false;
+    const total = syncMissing.length;
+    const taken = new Set();
+    // The same names the archive builder gives, so a folder filled by one route
+    // and topped up by the other holds one copy of each file rather than two.
+    const targets = syncMissing.map((it) => P.uniqueName(taken, P.downloadPath('', '', it.rel)));
+
+    syncCard(
+      '<div class="note">Writing into ' + esc(syncLabel) + '. Leave this tab open until it finishes.</div>' +
+      '<div class="tree">' + syncMissing.map((it, i) =>
+        '<div class="irow" data-i="' + i + '"><span class="iname">' + esc(it.rel) + '</span>' +
+        '<span class="isize">waiting</span></div>').join('') + '</div>' +
+      '<div class="note" data-act="tally">0 of ' + total + '</div>',
+      '<button class="btn" data-act="stop">Stop</button>',
+      false
+    );
+
+    let next = 0, done = 0, failed = 0, fatal = null;
+    const tally = () => {
+      const el = $modal.querySelector('[data-act="tally"]');
+      if (el) el.textContent = (done + failed) + ' of ' + total + (failed ? ' · ' + failed + ' failed' : '');
+    };
+
+    async function worker() {
+      for (;;) {
+        // One expired session fails every remaining file identically, so the
+        // first to say so stops the rest.
+        if (syncStop || fatal) return;
+        const i = next++;
+        if (i >= total) return;
+        markSyncRow(i, 'active', 'downloading…');
+        try {
+          await F.fetchInto(syncDir, targets[i], syncMissing[i]);
+          done++;
+          markSyncRow(i, 'done', 'done');
+        } catch (e) {
+          failed++;
+          if (e && e.auth) fatal = e.message;
+          markSyncRow(i, 'failed', String((e && e.message) || e));
+        }
+        tally();
+      }
+    }
+
+    const conc = Math.max(1, Math.min(5, Number(currentSettings.concurrency) || 3));
+    await Promise.all(Array.from({ length: Math.min(conc, total) }, worker));
+
+    // A clean run has nothing left to say that the folder's new state does not,
+    // so it re-checks. A run with failures keeps its list: which files failed
+    // and why lives nowhere else.
+    if (!failed && !syncStop) return runCompare();
+
+    syncCard(
+      '<div class="note' + (failed ? ' bad' : '') + '">' +
+      (fatal ? esc(fatal) + ' Sign in to ' + esc(location.host) + ' and check again.'
+             : (syncStop ? 'Stopped. ' : '') + done + ' file(s) written to ' + esc(syncLabel) +
+               (failed ? ', ' + failed + ' failed. Check again to retry those.' : '.')) +
+      '</div>',
+      '<button class="btn" data-act="close">Close</button>' +
+      '<button class="btn primary" data-act="compare">Check again</button>',
+      true
+    );
+  }
 
   /* ---------- per-row "Actions → Download" ---------- */
 

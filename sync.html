@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!--
+  A full extension page rather than part of the popup, because the folder
+  picker is a native dialog: opening one takes focus away from the popup, the
+  popup closes, and its JavaScript context - including the promise waiting on
+  the picker - dies with it. A tab survives the dialog.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sync a course folder</title>
+  <link rel="stylesheet" href="sync.css">
+</head>
+<body>
+<main>
+  <h1>Sync a course folder</h1>
+  <p class="lede">Pick the folder you keep a course in and the comparison runs on its
+  own. Every file the LMS has and the folder does not is downloaded straight into the
+  folder. Files already there are left alone, and files of your own that the LMS knows
+  nothing about are ignored. The folder is remembered, so a later sync of the same course
+  takes one click from its Resources page.</p>
+
+  <div id="unsupported" class="box" hidden>
+    <b>Brave turns off the File System Access API</b>, so this page cannot write into
+    your folder. Comparing still works: pick the folder and the missing files arrive as
+    one ZIP in your downloads, ready to extract over it.
+    <br><br>
+    To have them written into the folder instead, open <span class="path">brave://flags</span>,
+    search for <b>File System</b>, enable that flag and restart Brave. Chrome and Edge need
+    nothing.
+  </div>
+
+  <section class="step">
+    <h2>Course</h2>
+    <div id="sites" class="sites"><div class="muted">Loading courses…</div></div>
+  </section>
+
+  <section class="step">
+    <h2>Folder</h2>
+    <div id="folder" class="folder"><div class="muted">Pick a course first.</div></div>
+  </section>
+
+  <section class="step">
+    <h2>Result</h2>
+    <div class="row">
+      <button id="sync" class="btn primary" hidden>Download missing files</button>
+      <button id="stop" class="btn" hidden>Stop</button>
+      <button id="compare" class="btn" disabled>Check again</button>
+    </div>
+    <div id="result"></div>
+  </section>
+</main>
+
+<script src="lib/paths.js"></script>
+<script src="lib/sakai.js"></script>
+<script src="lib/sync.js"></script>
+<script src="lib/folder.js"></script>
+<script src="sync.js"></script>
+</body>
+</html>
