@@ -7,7 +7,7 @@ set -eu
 
 VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' manifest.json | head -1)
 OUT="lums-lms-downloader-${VERSION}.zip"
-FILES="manifest.json background.js content.js content.css offscreen.html offscreen.js popup.html popup.js popup.css sync.html sync.js sync.css lib icons README.md"
+FILES="manifest.json background.js content.js links.js content.css offscreen.html offscreen.js popup.html popup.js popup.css sync.html sync.js sync.css lib icons README.md"
 
 rm -f "$OUT"
 
