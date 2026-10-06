@@ -311,28 +311,31 @@
 
   function renderPlan(onLms, present, localCount) {
     const bytes = missing.reduce((n, it) => n + (it.bytes || 0), 0);
+    const updated = missing.filter((it) => it.replaces).length;
     $('result').innerHTML =
       '<div class="counts">' +
         '<div><b>' + onLms + '</b><span>on the LMS</span></div>' +
         '<div><b>' + present + '</b><span>already here</span></div>' +
-        '<div><b>' + missing.length + '</b><span>missing</span></div>' +
+        '<div><b>' + (missing.length - updated) + '</b><span>missing</span></div>' +
+        (updated ? '<div><b>' + updated + '</b><span>changed on the LMS</span></div>' : '') +
       '</div>' +
       (missing.length
         ? '<div class="files" id="files">' + missing.map((it, i) =>
             '<div class="file" data-i="' + i + '"><span class="mark">·</span>' +
-            '<span class="rel">' + esc(it.rel) + '</span>' +
-            '<span class="size">' + esc(formatBytes(it.bytes)) + '</span>' +
+            '<span class="rel">' + esc(it.replaces || it.rel) + '</span>' +
+            '<span class="size">' + (it.replaces ? 'newer on LMS · ' : '') + esc(formatBytes(it.bytes)) + '</span>' +
             '<span class="why"></span></div>').join('') + '</div>'
         : '<div class="ok">This folder already has every file the LMS is showing.</div>') +
       '<p class="hint">' + localCount + ' file(s) scanned in the folder. A file counts as ' +
       'already here when its name turns up anywhere inside, at any depth, so anything you ' +
-      'moved or filed away yourself is left alone.' +
+      'moved or filed away yourself is left alone. A copy older than the LMS file and a ' +
+      'different size gets replaced where it sits.' +
       (FSA ? '' : ' This browser will not let an extension write into your folder, so the ' +
         'missing files arrive as one ZIP in your downloads for you to extract over it.') +
       '</p>';
 
     $('sync').hidden = !missing.length;
-    $('sync').textContent = 'Download ' + missing.length + ' missing file' +
+    $('sync').textContent = 'Download ' + missing.length + (updated ? ' file' : ' missing file') +
       (missing.length === 1 ? '' : 's') + (FSA ? '' : ' as a ZIP') +
       (bytes ? ' · ' + formatBytes(bytes) : '');
   }
@@ -399,7 +402,7 @@
     // Same names the archive builder gives, so a folder filled by one mode and
     // topped up by the other holds one copy of each file rather than two.
     const taken = new Set();
-    const targets = missing.map((it) => P.uniqueName(taken, P.downloadPath('', '', it.rel)));
+    const targets = missing.map((it) => it.replaces || P.uniqueName(taken, P.downloadPath('', '', it.rel)));
 
     let next = 0;
     let done = 0;

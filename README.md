@@ -110,7 +110,7 @@ that course, so the only thing left to choose is the folder:
 
 The folder sticks to the course. Sync the same course again and it reconnects, compares and
 shows you the answer, so the whole thing costs one click from the Resources page and one
-more to fetch. A clean run re-checks the folder and settles on "everything is here".
+more to fetch. Progress shows in the same corner panel as any download, one row per file.
 
 **Sync folder** in the toolbar popup does the same job when no course page is open. It adds
 one step, picking the course from the list.
@@ -121,12 +121,18 @@ past-semester material stay invisible to it, and a lecture you moved into a fold
 own does not come back as a second copy. A file you renamed does come back, under its LMS
 name.
 
+Instructors sometimes swap in a corrected Module 2.pdf under the same name. Sync catches
+that: when the LMS file is newer than your copy and a different size, the list shows it as
+changed on the LMS, and the download writes the new version over your copy, wherever you
+filed it. A copy you annotated after you downloaded it is newer than the LMS file, so sync
+leaves it alone. Notes you added before the instructor's change go with the old version.
+
 The extension remembers which folder goes with which course. Chrome drops write access to a
 folder when it restarts, so the first sync after a restart asks you to confirm the folder
 with one click.
 
-When it writes into your folder, each run makes one attempt per file. Compare again to
-collect whatever failed. The ZIP route below uses the extension's usual three attempts.
+When it writes into your folder, each run makes one attempt per file. **Retry failed** in
+the panel compares again and collects whatever failed. The ZIP route below uses the extension's usual three attempts.
 
 Sync writes into a folder you chose, so `chrome.downloads` and the root-folder setting play
 no part. The concurrency, hidden-items and web-link settings all apply.
@@ -143,6 +149,23 @@ System**, enable that flag and restart Brave. Chrome and Edge need nothing.
 Brave asks whether to "upload" the folder when you pick it. Nothing leaves your machine.
 The page reads the list of filenames to work out what is missing, and it never opens the
 files.
+
+### Sync every course at once
+
+Keep a semester folder with one folder per course, named the way the course ZIPs name them.
+Extracting each course's ZIP there sets that up. Click **⇅ Sync all** in the Resources tool.
+The first time, it asks for the semester folder and remembers it. After that it goes
+straight to the comparison.
+
+Sync all matches each course folder to its course, compares them, and lists what each one
+is missing or has out of date. **Download** writes those files straight into their
+course folders, and a changed file replaces the old copy where it sits. Folders that match
+no course, like a `_toolkit` of your own, stay out of it.
+
+To point Sync all at a different folder, open the popup's **Settings** and click
+**Change** next to the semester folder. The next Sync all asks for the new one.
+
+Sync all writes into the folder, so on Brave it needs the File System flag described above.
 
 ---
 

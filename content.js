@@ -117,6 +117,12 @@
     openSync
   );
 
+  toolbarButton(
+    '⇅ Sync all',
+    'Fetch what every course folder in your semester folder is missing',
+    openSyncAll
+  );
+
   /* ---------- pre-flight picker ---------- */
 
   let courseTitle = '';
@@ -278,6 +284,7 @@
 
   let timer = null;
   let hidden = false;   // card dismissed while its job is still running
+  let syncJob = null;   // a folder sync owns the panel while this one runs
 
   function startPolling() {
     hidden = false;
@@ -292,6 +299,7 @@
   }
 
   async function tick() {
+    if (syncJob && syncJob.state === 'running') return;
     if (hidden) { $panel.innerHTML = ''; stopPolling(); return; }
     const st = await send({ type: 'GET_STATE' });
     if (!st.ok) return;
@@ -312,6 +320,7 @@
     if (job.state === 'done') return job.fatal ? 'Stopped' : 'Finished';
     if (job.state === 'paused') return 'Paused';
     if (job.phase === 'archiving') return 'Building archive';
+    if (job.phase === 'syncing') return 'Syncing';
     return 'Downloading';
   }
 
@@ -331,7 +340,9 @@
     return String(f);
   }
 
-  function renderPanel(job, live) {
+  /* `own` replaces the worker-backed actions for a run this page drives itself
+   * (a folder sync). Only the buttons it supplies are drawn. */
+  function renderPanel(job, live, own) {
     const p = Progress.jobProgress(job, live);
     const finished = job.state === 'done' || job.state === 'cancelled';
     const note = noteFor(job);
@@ -355,28 +366,7 @@
           '<span class="ft">' + tail + '</span></div>';
       }).join('');
 
-    $panel.innerHTML =
-      '<div class="card panel">' +
-        '<div class="phead">' +
-          '<span class="ptitle">' + esc(headline(job)) + ' — ' + esc(job.siteTitle) + '</span>' +
-          '<button class="x" data-act="dismiss" title="Dismiss">×</button>' +
-        '</div>' +
-        '<div class="bar"><i style="width:' + p.percent + '%"></i></div>' +
-        '<div class="line">' + (finished ? esc(Progress.summaryLine(job)) : esc(Progress.progressLine(p)) + ' · ' + p.percent + '%') + '</div>' +
-        (note ? '<div class="note ' + note.cls + '">' + esc(note.text) + '</div>' : '') +
-        (rows ? '<div class="rows">' + rows + '</div>' : '') +
-        '<div class="row end">' +
-          (finished
-            ? (p.failed || p.cancelled ? '<button class="btn" data-act="retry">Retry failed</button>' : '') +
-              '<button class="btn" data-act="folder">Open folder</button>'
-            : (job.state === 'paused'
-                ? '<button class="btn" data-act="resume">Resume</button>'
-                : '<button class="btn" data-act="pause">Pause</button>') +
-              '<button class="btn" data-act="cancel">Cancel</button>') +
-        '</div>' +
-      '</div>';
-
-    const act = {
+    const act = own || {
       pause: () => send({ type: 'PAUSE', jobId: job.id }),
       resume: () => send({ type: 'RESUME', jobId: job.id }).then(startPolling),
       cancel: () => send({ type: 'CANCEL', jobId: job.id }),
@@ -391,6 +381,24 @@
         stopPolling();
       }
     };
+    const btn = (name, label) => act[name] ? '<button class="btn" data-act="' + name + '">' + label + '</button>' : '';
+
+    $panel.innerHTML =
+      '<div class="card panel">' +
+        '<div class="phead">' +
+          '<span class="ptitle">' + esc(headline(job)) + ' — ' + esc(job.siteTitle) + '</span>' +
+          '<button class="x" data-act="dismiss" title="Dismiss">×</button>' +
+        '</div>' +
+        '<div class="bar"><i style="width:' + p.percent + '%"></i></div>' +
+        '<div class="line">' + (finished ? esc(Progress.summaryLine(job)) : esc(Progress.progressLine(p)) + ' · ' + p.percent + '%') + '</div>' +
+        (note ? '<div class="note ' + note.cls + '">' + esc(note.text) + '</div>' : '') +
+        (rows ? '<div class="rows">' + rows + '</div>' : '') +
+        '<div class="row end">' +
+          (finished
+            ? (p.failed || p.cancelled ? btn('retry', 'Retry failed') : '') + btn('folder', 'Open folder')
+            : (job.state === 'paused' ? btn('resume', 'Resume') : btn('pause', 'Pause')) + btn('cancel', 'Cancel')) +
+        '</div>' +
+      '</div>';
 
     $panel.querySelectorAll('[data-act]').forEach((b) => {
       b.onclick = () => { act[b.dataset.act](); tick(); };
@@ -410,6 +418,7 @@
       }
     }
     closeModal();
+    syncJob = null;
     const r = await send({ type: 'START_JOB', origin: location.origin, siteId, siteTitle: courseTitle, scopeLabel, items });
     if (!r.ok) return showModalText('Could not start the download: ' + (r.error || 'unknown error'));
     startPolling();
@@ -438,6 +447,7 @@
   let syncLabel = '';
   let syncMissing = [];
   let syncStop = false;
+  let syncAll = false;     // which dialog the shared steps below belong to
 
   const haveSyncFolder = () => !!(syncDir || syncLocal);
 
@@ -453,8 +463,8 @@
     $modal.innerHTML =
       '<div class="overlay"><div class="card">' +
         '<div class="head">' +
-          '<div><div class="title">Sync folder</div>' +
-          '<div class="sub">' + esc(courseTitle || 'this course') + '</div></div>' +
+          '<div><div class="title">' + (syncAll ? 'Sync all' : 'Sync folder') + '</div>' +
+          '<div class="sub">' + esc(syncAll ? syncLabel || 'every course' : courseTitle || 'this course') + '</div></div>' +
           (closable ? '<button class="x" data-act="close" title="Close">×</button>' : '') +
         '</div>' + body +
         '<div class="row end">' + foot + '</div>' +
@@ -467,10 +477,10 @@
     };
     on('close', closeModal);
     on('pick', choosePick);
-    on('change', () => showExplainer(null));
-    on('compare', runCompare);
+    on('change', () => (syncAll ? askSemester(null) : showExplainer(null)));
+    on('compare', () => (syncAll ? runCompareAll() : runCompare()));
+    on('pickall', pickSemester);
     on('download', runSyncDownload);
-    on('stop', () => { syncStop = true; });
 
     const input = $modal.querySelector('[data-act="pickinput"]');
     if (input) input.onchange = (e) => takeSyncListing(e.target.files);
@@ -533,6 +543,7 @@
   }
 
   async function openSync() {
+    syncAll = false;
     syncStop = false;
     showModalText('Opening…', true);
     await ensureCourseTitle();
@@ -591,18 +602,21 @@
     let bytes = 0;
     for (const it of syncMissing) bytes += it.bytes;
 
+    const updated = syncMissing.filter((it) => it.replaces).length;
     const counts = '<div class="note"><b>' + onLms + '</b> on the LMS · <b>' + present +
-      '</b> already in ' + esc(syncLabel) + ' · <b>' + syncMissing.length + '</b> missing</div>';
+      '</b> already in ' + esc(syncLabel) + ' · <b>' + (syncMissing.length - updated) + '</b> missing' +
+      (updated ? ' · <b>' + updated + '</b> changed on the LMS' : '') + '</div>';
 
     const list = syncMissing.length
       ? '<div class="tree">' + syncMissing.map((it, i) =>
-          '<div class="irow" data-i="' + i + '"><span class="iname">' + esc(it.rel) + '</span>' +
-          '<span class="isize">' + esc(Progress.formatBytes(it.bytes)) + '</span></div>').join('') + '</div>'
+          '<div class="irow" data-i="' + i + '"><span class="iname">' + esc(it.replaces || it.rel) + '</span>' +
+          '<span class="isize">' + (it.replaces ? 'newer on LMS · ' : '') +
+          esc(Progress.formatBytes(it.bytes)) + '</span></div>').join('') + '</div>'
       : '<div class="note ok">Nothing to do. That folder already has every file the LMS is showing.</div>';
 
     const download = syncMissing.length
       ? '<button class="btn primary" data-act="download">Download ' + syncMissing.length +
-        ' missing file' + (syncMissing.length === 1 ? '' : 's') +
+        (updated ? ' file' : ' missing file') + (syncMissing.length === 1 ? '' : 's') +
         (F.supported() ? '' : ' as a ZIP') + (bytes ? ' · ' + esc(Progress.formatBytes(bytes)) : '') +
         '</button>'
       : '';
@@ -611,87 +625,267 @@
       counts + list +
       '<div class="note">' + scanned + ' file(s) scanned. A file counts as already there when ' +
       'its name turns up anywhere inside the folder, at any depth, so anything you moved or ' +
-      'filed away yourself is left alone.</div>',
+      'filed away yourself is left alone. A copy older than the LMS file and a different ' +
+      'size gets replaced where it sits.</div>',
       '<button class="btn" data-act="change">Change folder</button>' +
       '<button class="btn" data-act="compare">Check again</button>' + download,
       true
     );
   }
 
-  function markSyncRow(i, state, why) {
-    const el = $modal.querySelector('.irow[data-i="' + i + '"]');
-    if (!el) return;
-    const tag = el.querySelector('.isize');
-    if (tag) tag.textContent = why || state;
-    el.style.opacity = state === 'done' ? '.55' : '1';
-  }
-
   /* Without a directory handle there is nowhere to write, so the missing items
    * go through the ordinary download queue instead and arrive as one archive.
-   * deliver() already owns the size check, the job and the progress panel. */
+   * deliver() already owns the size check, the job and the progress panel.
+   *
+   * With one, the files are fetched and written right here, but shown in the
+   * same bottom-right panel as a queued download: the run is shaped like a
+   * worker job, with byte counts in a `live` map keyed the same way. */
   async function runSyncDownload() {
     if (!F.supported() || !syncDir) return deliver(syncMissing, 'missing files');
+    if (syncJob && syncJob.state === 'running') return showModalText('A sync is still running. Let it finish first.');
 
+    const items = syncMissing;
+    const dir = syncDir;
+    const again = syncAll ? runCompareAll : runCompare;
     syncStop = false;
-    const total = syncMissing.length;
+    closeModal();
+
     const taken = new Set();
     // The same names the archive builder gives, so a folder filled by one route
     // and topped up by the other holds one copy of each file rather than two.
-    const targets = syncMissing.map((it) => P.uniqueName(taken, P.downloadPath('', '', it.rel)));
+    const targets = items.map((it) => it.replaces || P.uniqueName(taken, P.downloadPath('', '', it.rel)));
 
-    syncCard(
-      '<div class="note">Writing into ' + esc(syncLabel) + '. Leave this tab open until it finishes.</div>' +
-      '<div class="tree">' + syncMissing.map((it, i) =>
-        '<div class="irow" data-i="' + i + '"><span class="iname">' + esc(it.rel) + '</span>' +
-        '<span class="isize">waiting</span></div>').join('') + '</div>' +
-      '<div class="note" data-act="tally">0 of ' + total + '</div>',
-      '<button class="btn" data-act="stop">Stop</button>',
-      false
-    );
-
-    let next = 0, done = 0, failed = 0, fatal = null;
-    const tally = () => {
-      const el = $modal.querySelector('[data-act="tally"]');
-      if (el) el.textContent = (done + failed) + ' of ' + total + (failed ? ' · ' + failed + ' failed' : '');
+    const job = {
+      siteTitle: syncLabel,
+      state: 'running',
+      phase: 'syncing',
+      fatal: null,
+      items: items.map((it, i) => ({
+        title: it.title, rel: it.rel, bytes: it.bytes, state: 'pending', error: null, downloadId: 'sync:' + i
+      }))
     };
+    const live = {};
+    syncJob = job;
 
+    const paint = () => {
+      if (syncJob !== job) return;   // dismissed
+      const t = { files: job.items.length, bytes: 0, doneFiles: 0, doneBytes: 0, failed: 0, cancelled: 0 };
+      for (const it of job.items) {
+        t.bytes += it.bytes;
+        if (it.state === 'done') { t.doneFiles++; t.doneBytes += it.bytes; }
+        if (it.state === 'failed') t.failed++;
+        if (it.state === 'cancelled') t.cancelled++;
+      }
+      job.totals = t;
+      renderPanel(job, live, {
+        cancel: () => { syncStop = true; },
+        retry: again,
+        dismiss: () => { syncJob = null; $panel.innerHTML = ''; }
+      });
+    };
+    const timer = setInterval(paint, 400);
+    paint();
+
+    let next = 0;
     async function worker() {
       for (;;) {
         // One expired session fails every remaining file identically, so the
         // first to say so stops the rest.
-        if (syncStop || fatal) return;
+        if (syncStop || job.fatal) return;
         const i = next++;
-        if (i >= total) return;
-        markSyncRow(i, 'active', 'downloading…');
+        if (i >= items.length) return;
+        const it = job.items[i];
+        it.state = 'active';
         try {
-          await F.fetchInto(syncDir, targets[i], syncMissing[i]);
-          done++;
-          markSyncRow(i, 'done', 'done');
+          await F.fetchInto(dir, targets[i], items[i], (n) => { live[it.downloadId] = { received: n, total: it.bytes }; });
+          it.state = 'done';
         } catch (e) {
-          failed++;
-          if (e && e.auth) fatal = e.message;
-          markSyncRow(i, 'failed', String((e && e.message) || e));
+          it.state = 'failed';
+          it.error = String((e && e.message) || e);
+          if (e && e.auth) job.fatal = 'auth';
         }
-        tally();
       }
     }
 
     const conc = Math.max(1, Math.min(5, Number(currentSettings.concurrency) || 3));
-    await Promise.all(Array.from({ length: Math.min(conc, total) }, worker));
+    await Promise.all(Array.from({ length: Math.min(conc, items.length) }, worker));
 
-    // A clean run has nothing left to say that the folder's new state does not,
-    // so it re-checks. A run with failures keeps its list: which files failed
-    // and why lives nowhere else.
-    if (!failed && !syncStop) return runCompare();
+    for (const it of job.items) if (it.state === 'pending') it.state = job.fatal ? 'failed' : 'cancelled';
+    job.state = syncStop ? 'cancelled' : 'done';
+    clearInterval(timer);
+    paint();
+  }
+
+  /* ---------- sync all ---------- */
+
+  /* Every course at once, against one semester folder that holds a folder per
+   * course, named the way the course archives name them (lib/sync.js
+   * courseFolder). Picked once, then remembered; the popup's settings forget
+   * it, which is how it gets changed. The handle sits in this origin's
+   * IndexedDB like a course's, and its name in chrome.storage so the popup can
+   * show it. Files go straight into the course folders, so this needs the
+   * File System Access API: without it there is no folder to remember. */
+  const SEMESTER_KEY = 'lums:semesterFolder';
+  const SEMESTER_ID = '*semester';   // IndexedDB slot; no site id starts with *
+
+  async function openSyncAll() {
+    syncAll = true;
+    syncStop = false;
+    syncDir = null;
+    syncLocal = null;
+    syncLabel = '';
+    showModalText('Opening…', true);
+
+    if (!F.supported()) {
+      return syncCard(
+        '<div class="note"><b>Brave turns off the File System Access API</b>, and Sync all ' +
+        'needs it to remember your semester folder and write into it. Enable the ' +
+        '<b>File System</b> flag in brave://flags and restart Brave. Chrome and Edge need nothing.</div>',
+        '<button class="btn" data-act="close">Close</button>',
+        true
+      );
+    }
+
+    const stored = await chrome.storage.local.get(SEMESTER_KEY);
+    const handle = stored[SEMESTER_KEY] ? await F.recall(location.origin, SEMESTER_ID) : null;
+    if (!handle) return askSemester(null);
+
+    syncLabel = handle.name;
+    if (await F.permissionState(handle) === 'granted') {
+      syncDir = handle;
+      return runCompareAll();
+    }
+
+    // Chrome drops write access on restart; one click gets it back.
+    syncCard(
+      '<div class="note">Chrome drops write access to a folder when it restarts, so ' +
+      '<b>' + esc(handle.name) + '</b> needs confirming again.</div>',
+      '<button class="btn" data-act="change">Choose a different folder</button>' +
+      '<button class="btn primary" data-act="reconnect">Use ' + esc(handle.name) + '</button>',
+      true
+    );
+    const btn = $modal.querySelector('[data-act="reconnect"]');
+    if (btn) {
+      btn.onclick = async () => {
+        if (!(await F.grant(handle))) return askSemester('Write access to that folder was refused.');
+        syncDir = handle;
+        runCompareAll();
+      };
+    }
+  }
+
+  function askSemester(note) {
+    syncCard(
+      '<div class="note">Point this at your semester folder, the one that holds a folder per ' +
+      'course (extracting each course\'s ZIP there sets that up). Every course with a folder ' +
+      'there gets compared, and whatever is missing or changed on the LMS goes straight into ' +
+      'its folder. Folders that match no course are left alone.' +
+      '<br><br>The folder is remembered. Change it later under Settings in the extension popup.</div>' +
+      (note ? '<div class="note bad">' + esc(note) + '</div>' : ''),
+      '<button class="btn" data-act="close">Cancel</button>' +
+      '<button class="btn primary" data-act="pickall">Choose folder</button>',
+      true
+    );
+  }
+
+  async function pickSemester() {
+    let handle;
+    try {
+      handle = await F.pick();
+    } catch (e) {
+      if (e && e.aborted) return;
+      return askSemester('This browser would not open a folder: ' + e.message);
+    }
+    if (!(await F.grant(handle))) return askSemester('Without write access to that folder there is nowhere to put the files.');
+    await F.remember(location.origin, SEMESTER_ID, handle);
+    await chrome.storage.local.set({ [SEMESTER_KEY]: { name: handle.name } });
+    syncDir = handle;
+    syncLabel = handle.name;
+    runCompareAll();
+  }
+
+  async function runCompareAll() {
+    showModalText('Comparing every course against ' + syncLabel + '…', true);
+
+    const st = await send({ type: 'GET_STATE' });
+    currentSettings = st.settings || currentSettings;
+
+    let files;
+    try {
+      files = await F.scan(syncDir);
+    } catch (e) {
+      return askSemester('Could not read ' + syncLabel + ': ' + String((e && e.message) || e));
+    }
+    const folders = SyncPlan.byFolder(files);
+
+    const sites = await Sakai.fetchSites(location.origin);
+    if (!sites || !sites.sites) {
+      return syncCard(
+        '<div class="note bad">' + (describeError(sites || {}) || 'Could not load your courses.') + '</div>',
+        '<button class="btn" data-act="close">Close</button>' +
+        '<button class="btn primary" data-act="compare">Check again</button>',
+        true
+      );
+    }
+
+    // Past semesters share no folder names with this one, so they drop out here.
+    const matched = [];
+    for (const s of sites.sites) {
+      const f = folders.get(SyncPlan.courseFolder(s.title).toLowerCase());
+      if (f && !f.site) { f.site = s; matched.push(f); }
+    }
+    const strays = [...folders.values()].filter((f) => !f.site).map((f) => f.name);
+
+    const results = await Promise.all(matched.map(async (f) => {
+      const content = await Sakai.fetchSiteContent(f.site.id, currentSettings, location.origin);
+      if (content && content.error === 'empty') return { f, items: [] };
+      if (!content || !content.items) return { f, error: (content && describeError(content)) || 'The LMS did not answer.' };
+      // Paths become relative to the semester folder, which is what gets written into.
+      const plan = SyncPlan.plan(content.items, SyncPlan.indexLocal(f.files));
+      return {
+        f,
+        items: plan.missing.map((it) => Object.assign({}, it, {
+          rel: f.name + '/' + it.rel,
+          replaces: it.replaces ? f.name + '/' + it.replaces : undefined
+        }))
+      };
+    }));
+
+    syncMissing = [];
+    for (const r of results) if (r.items) syncMissing.push(...r.items);
+    renderSyncAll(results, strays);
+  }
+
+  function renderSyncAll(results, strays) {
+    let bytes = 0;
+    for (const it of syncMissing) bytes += it.bytes;
+    const changed = syncMissing.filter((it) => it.replaces).length;
+
+    // describeError hands back markup that is already escaped.
+    const rows = results.map((r) => {
+      const n = r.items ? r.items.length : 0;
+      const ch = r.items ? r.items.filter((it) => it.replaces).length : 0;
+      const what = r.error ? r.error
+        : !n ? 'up to date'
+        : esc([n - ch ? (n - ch) + ' missing' : '', ch ? ch + ' changed' : ''].filter(Boolean).join(' · '));
+      return '<div class="irow"><span class="iname">' + esc(r.f.name) + '</span>' +
+        '<span class="isize">' + what + '</span></div>';
+    }).join('');
 
     syncCard(
-      '<div class="note' + (failed ? ' bad' : '') + '">' +
-      (fatal ? esc(fatal) + ' Sign in to ' + esc(location.host) + ' and check again.'
-             : (syncStop ? 'Stopped. ' : '') + done + ' file(s) written to ' + esc(syncLabel) +
-               (failed ? ', ' + failed + ' failed. Check again to retry those.' : '.')) +
-      '</div>',
-      '<button class="btn" data-act="close">Close</button>' +
-      '<button class="btn primary" data-act="compare">Check again</button>',
+      '<div class="note"><b>' + results.length + '</b> course folder(s) · <b>' + (syncMissing.length - changed) +
+      '</b> missing · <b>' + changed + '</b> changed on the LMS</div>' +
+      (results.length
+        ? '<div class="tree">' + rows + '</div>'
+        : '<div class="note bad">No folder in ' + esc(syncLabel) + ' matches a course on ' + esc(location.host) + '.</div>') +
+      (results.length && !syncMissing.length
+        ? '<div class="note ok">Every course folder has every file the LMS is showing.</div>' : '') +
+      (strays.length ? '<div class="note">Not a course, left alone: ' + esc(strays.join(', ')) + '.</div>' : ''),
+      '<button class="btn" data-act="compare">Check again</button>' +
+      (syncMissing.length
+        ? '<button class="btn primary" data-act="download">Download ' + syncMissing.length + ' file' +
+          (syncMissing.length === 1 ? '' : 's') + (bytes ? ' · ' + esc(Progress.formatBytes(bytes)) : '') + '</button>'
+        : ''),
       true
     );
   }

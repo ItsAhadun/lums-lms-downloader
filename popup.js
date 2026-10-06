@@ -218,6 +218,23 @@
     });
   }
 
+  /* The semester folder itself can only be picked on an LMS page: a folder
+   * dialog would close this popup, and the handle lives in the LMS origin's
+   * IndexedDB anyway. So changing it here means forgetting it, and the next
+   * Sync all asks. */
+  const SEMESTER_KEY = 'lums:semesterFolder';
+
+  async function initSemester() {
+    const got = (await chrome.storage.local.get(SEMESTER_KEY))[SEMESTER_KEY];
+    $('semesterName').textContent = got ? got.name : 'asked on first Sync all';
+    $('semesterChange').hidden = !got;
+  }
+
+  $('semesterChange').onclick = async () => {
+    await chrome.storage.local.remove(SEMESTER_KEY);
+    await initSemester();
+  };
+
   $('openFolder').onclick = () => send({ type: 'SHOW_DOWNLOADS' });
 
   /* Its own tab, not part of this popup: picking a folder opens a native
@@ -229,6 +246,7 @@
   };
 
   initSettings().then(loadSites);
+  initSemester();
   tick();
   setInterval(tick, 400);
 })();
