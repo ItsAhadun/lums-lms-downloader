@@ -407,7 +407,8 @@
 
   /* Hand a selection to the service worker. The worker picks the mode from the
    * item count - more than one file is always one archive. */
-  async function deliver(items, scopeLabel) {
+  /* `extra` overrides fields of the job request (Sync all names its archive). */
+  async function deliver(items, scopeLabel, extra) {
     if (items.length > 1) {
       let bytes = 0;
       for (const it of items) bytes += it.bytes;
@@ -419,7 +420,8 @@
     }
     closeModal();
     syncJob = null;
-    const r = await send({ type: 'START_JOB', origin: location.origin, siteId, siteTitle: courseTitle, scopeLabel, items });
+    const r = await send(Object.assign(
+      { type: 'START_JOB', origin: location.origin, siteId, siteTitle: courseTitle, scopeLabel, items }, extra));
     if (!r.ok) return showModalText('Could not start the download: ' + (r.error || 'unknown error'));
     startPolling();
   }
@@ -484,6 +486,8 @@
 
     const input = $modal.querySelector('[data-act="pickinput"]');
     if (input) input.onchange = (e) => takeSyncListing(e.target.files);
+    const allInput = $modal.querySelector('[data-act="pickallinput"]');
+    if (allInput) allInput.onchange = (e) => takeSemesterListing(e.target.files);
   }
 
   // A directory <input> is the only folder picker left when the File System
@@ -495,6 +499,18 @@
         '<input type="file" data-act="pickinput" webkitdirectory directory multiple hidden></label>';
   }
 
+  /* Why a folder cannot be written into or remembered here. Brave turns the
+   * API off behind a flag; Chrome, Edge, Opera and Vivaldi ship it on, so any
+   * other browser without it has no switch worth naming. */
+  function noFolderAccess() {
+    return navigator.brave
+      ? '<b>Brave turns off the File System Access API</b>, so the extension cannot write ' +
+        'into your folder or remember which one it is. To fix that, enable the <b>File System ' +
+        'Access API</b> flag in brave://flags and restart Brave.'
+      : '<b>This browser does not offer the File System Access API</b>, so the extension cannot ' +
+        'write into your folder or remember which one it is. Chrome and Edge have it.';
+  }
+
   function showExplainer(note) {
     const body = F.supported()
       ? '<div class="note">Point this at the folder where you keep this course. Every file ' +
@@ -502,12 +518,9 @@
         'untouched, and anything of your own the LMS never had is ignored.' +
         '<br><br>The folder is remembered, so every sync after this one goes straight to the ' +
         'answer.</div>'
-      : '<div class="note"><b>Brave turns off the File System Access API</b>, so this cannot ' +
-        'write into your folder or remember which one it is. Picking it still works out what ' +
-        'is missing, and those files arrive as one ZIP to extract over the folder.' +
-        '<br><br>To have them written straight in, enable the <b>File System</b> flag in ' +
-        'brave://flags and restart. Either way the folder never leaves your machine: only ' +
-        'its list of filenames is read.</div>';
+      : '<div class="note">' + noFolderAccess() + '<br><br>Picking the folder still works out ' +
+        'what is missing, and those files arrive as one ZIP to extract over the folder. The ' +
+        'folder never leaves your machine: only its list of filenames is read.</div>';
 
     syncCard(
       body + (note ? '<div class="note bad">' + esc(note) + '</div>' : ''),
@@ -641,7 +654,13 @@
    * same bottom-right panel as a queued download: the run is shaped like a
    * worker job, with byte counts in a `live` map keyed the same way. */
   async function runSyncDownload() {
-    if (!F.supported() || !syncDir) return deliver(syncMissing, 'missing files');
+    if (!F.supported() || !syncDir) {
+      if (!syncAll) return deliver(syncMissing, 'missing files');
+      // A changed file takes the path of the copy it replaces, so extracting
+      // overwrites that copy wherever it was filed.
+      return deliver(syncMissing.map((it) => (it.replaces ? Object.assign({}, it, { rel: it.replaces }) : it)), '',
+        { siteTitle: syncLabel, archiveName: syncLabel + ' - sync' });
+    }
     if (syncJob && syncJob.state === 'running') return showModalText('A sync is still running. Let it finish first.');
 
     const items = syncMissing;
@@ -736,15 +755,7 @@
     syncLabel = '';
     showModalText('Opening…', true);
 
-    if (!F.supported()) {
-      return syncCard(
-        '<div class="note"><b>Brave turns off the File System Access API</b>, and Sync all ' +
-        'needs it to remember your semester folder and write into it. Enable the ' +
-        '<b>File System</b> flag in brave://flags and restart Brave. Chrome and Edge need nothing.</div>',
-        '<button class="btn" data-act="close">Close</button>',
-        true
-      );
-    }
+    if (!F.supported()) return askSemester(null);
 
     const stored = await chrome.storage.local.get(SEMESTER_KEY);
     const handle = stored[SEMESTER_KEY] ? await F.recall(location.origin, SEMESTER_ID) : null;
@@ -774,18 +785,40 @@
     }
   }
 
+  /* Without the File System Access API this still works, one step longer: the
+   * folder is read through a directory <input> each time, and the files arrive
+   * as one ZIP whose entries start with their course folder, to extract inside
+   * the semester folder. */
   function askSemester(note) {
+    const fsa = F.supported();
     syncCard(
       '<div class="note">Point this at your semester folder, the one that holds a folder per ' +
       'course (extracting each course\'s ZIP there sets that up). Every course with a folder ' +
-      'there gets compared, and whatever is missing or changed on the LMS goes straight into ' +
-      'its folder. Folders that match no course are left alone.' +
-      '<br><br>The folder is remembered. Change it later under Settings in the extension popup.</div>' +
+      'there gets compared against the LMS. Folders that match no course are left alone.' +
+      (fsa
+        ? ' Whatever is missing or changed goes straight into its course folder.<br><br>The ' +
+          'folder is remembered. Change it later under Settings in the extension popup.'
+        : '<br><br>' + noFolderAccess() + ' So the folder gets picked each time, and the files ' +
+          'arrive as one ZIP: extract it inside the semester folder and each file lands in its ' +
+          'course folder. Only file names, sizes and dates are read.') +
+      '</div>' +
       (note ? '<div class="note bad">' + esc(note) + '</div>' : ''),
       '<button class="btn" data-act="close">Cancel</button>' +
-      '<button class="btn primary" data-act="pickall">Choose folder</button>',
+      (fsa
+        ? '<button class="btn primary" data-act="pickall">Choose folder</button>'
+        : '<label class="btn primary">Choose folder' +
+          '<input type="file" data-act="pickallinput" webkitdirectory directory multiple hidden></label>'),
       true
     );
+  }
+
+  // A listing's paths start with the picked folder's own name; scan() paths do not.
+  function takeSemesterListing(fileList) {
+    if (!fileList || !fileList.length) return;
+    syncLabel = F.listingRoot(fileList) || 'that folder';
+    syncLocal = F.listing(fileList).map((f) =>
+      Object.assign({}, f, { path: f.path.split('/').slice(1).join('/') }));
+    runCompareAll();
   }
 
   async function pickSemester() {
@@ -812,7 +845,7 @@
 
     let files;
     try {
-      files = await F.scan(syncDir);
+      files = syncLocal || await F.scan(syncDir);
     } catch (e) {
       return askSemester('Could not read ' + syncLabel + ': ' + String((e && e.message) || e));
     }

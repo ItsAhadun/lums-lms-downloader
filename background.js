@@ -223,6 +223,7 @@ async function pump() {
           startZip = {
             id: job.id,
             courseFolder: job.courseFolder,
+            archiveName: job.archiveName || '',
             scopeLabel: job.scopeLabel || '',
             concurrency: settings.concurrency,
             // Every item goes over so the indices in a tick still line up with
@@ -448,7 +449,8 @@ function makeJob(payload) {
   const id = 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   // Decided by the size of the selection, never by a setting: a multi-file
   // download is always one archive, a single file is always the file itself.
-  const delivery = payload.items.length > 1 ? 'zip' : 'files';
+  // ...except a named archive, which was asked for as a ZIP whatever it holds.
+  const delivery = payload.archiveName || payload.items.length > 1 ? 'zip' : 'files';
   return {
     id,
     // Which LMS host this course came from. Only used to address a person
@@ -456,7 +458,10 @@ function makeJob(payload) {
     origin: payload.origin || '',
     siteId: payload.siteId,
     siteTitle: payload.siteTitle || payload.siteId,
-    courseFolder: P.sanitizeSegment(payload.siteTitle || payload.siteId),
+    // A named archive spans courses: its items carry their own course folder
+    // in rel, so the entries get no common prefix.
+    courseFolder: payload.archiveName ? '' : P.sanitizeSegment(payload.siteTitle || payload.siteId),
+    archiveName: payload.archiveName || '',
     scopeLabel: payload.scopeLabel || '',
     delivery,
     createdAt: Date.now(),

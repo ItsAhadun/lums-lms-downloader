@@ -165,7 +165,11 @@ no course, like a `_toolkit` of your own, stay out of it.
 To point Sync all at a different folder, open the popup's **Settings** and click
 **Change** next to the semester folder. The next Sync all asks for the new one.
 
-Sync all writes into the folder, so on Brave it needs the File System flag described above.
+Chrome, Edge, Opera and Vivaldi need no setup. A browser without the File System Access API,
+like Brave with its flag off, still runs Sync all one step longer: it asks for the folder each
+time and hands you one ZIP, `<semester folder> - sync.zip`. Extract it inside the semester
+folder and each file lands in its course folder, with changed files over the old copies.
+Enable the flag described above to skip all of that.
 
 ---
 

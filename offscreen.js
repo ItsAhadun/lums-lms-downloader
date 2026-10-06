@@ -89,7 +89,7 @@
     const taken = new Set();
     const todo = j.items.filter((it) => it.state === 'pending').length;
     // Wrapping one PDF in an archive just makes the reader unpack it again.
-    const single = todo === 1;
+    const single = todo === 1 && !spec.archiveName;
     let singleChunks = null;
     let singleName = '';
     let produced = 0;
@@ -295,6 +295,7 @@
       const blob = single && singleChunks ? new Blob(singleChunks) : zip.blob();
       const filename = single
         ? P.sanitizeSegment(String(singleName).split('/').pop())
+        : spec.archiveName ? P.sanitizeSegment(spec.archiveName) + '.zip'
         : spec.courseFolder + (spec.scopeLabel ? ' - ' + P.sanitizeSegment(spec.scopeLabel) : '') + '.zip';
       // The URL is freed when the worker closes this document, which it does
       // once the download has landed - only the worker sees that happen.

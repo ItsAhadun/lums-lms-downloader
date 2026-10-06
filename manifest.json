@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LUMS LMS Resource Downloader",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Bulk-download Sakai Resources from the LUMS LMS and its archive, or sync a course into a folder you already keep it in.",
   "minimum_chrome_version": "116",
   "permissions": ["downloads", "storage", "alarms", "offscreen"],
