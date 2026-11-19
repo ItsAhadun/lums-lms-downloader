@@ -94,6 +94,7 @@
   /* ---------- toolbar button ---------- */
 
   const nav = document.querySelector('.navIntraTool');
+  const STALE = 'The extension was updated since this page loaded. Reload the page and try again.';
 
   function toolbarButton(text, title, onClick) {
     const li = document.createElement('li');
@@ -103,7 +104,17 @@
     a.className = 'lums-dl-btn';
     a.textContent = text;
     a.title = title;
-    a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Updating or reloading the extension orphans this script: every chrome.*
+      // call then throws, and the dialog would sit on its spinner for good.
+      if (!(chrome.runtime && chrome.runtime.id)) return showModalText(STALE);
+      Promise.resolve().then(onClick).catch((err) => {
+        showModalText(chrome.runtime && chrome.runtime.id
+          ? 'Something went wrong: ' + String((err && err.message) || err)
+          : STALE);
+      });
+    });
     li.appendChild(a);
     if (nav) nav.appendChild(li); else document.body.appendChild(li);
   }

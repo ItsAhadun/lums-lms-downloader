@@ -12,6 +12,11 @@
  * Resources tool instead. Links to a specific tool or page inside a course
  * are left alone, so Overview stays one click away.
  *
+ * Also runs on the host root: signing in from the gateway there lands back on
+ * "/", which Sakai serves as the full portal with no redirect to /portal/. A
+ * /portal/* match alone missed that page, so the first course clicked after
+ * signing in opened Overview.
+ *
  * Matched by URL, never by sidebar markup, so a Sakai upgrade that restyles
  * the sidebar does not break it. Any failure falls back to the original link.
  */
